@@ -11,75 +11,29 @@ import {
 } from "lucide-react";
 
 import { siteConfig } from "../../data/siteConfig";
+import { supabase } from "../../lib/supabase";
 
-const STORAGE_KEY = "voltex_products";
+const TABLE_NAME = "products";
 const CATEGORY_KEY = "voltex_categories";
 
-const demoProducts = [
-  {
-    id: 1,
-    name: "LED Bulb",
-    category: "Lighting",
-    description: "Energy-efficient LED lighting for homes and offices.",
-    price: "Contact for Price",
-  },
-  {
-    id: 2,
-    name: "LED Panel Light",
-    category: "Lighting",
-    description: "Modern panel lighting for commercial spaces.",
-    price: "Contact for Price",
-  },
-  {
-    id: 3,
-    name: "Electrical Wire",
-    category: "Wires & Cables",
-    description: "Quality electrical wiring for different applications.",
-    price: "Contact for Price",
-  },
-  {
-    id: 4,
-    name: "Power Cable",
-    category: "Wires & Cables",
-    description: "Electrical cables for residential and industrial needs.",
-    price: "Contact for Price",
-  },
-  {
-    id: 5,
-    name: "Modular Switch",
-    category: "Switches & Sockets",
-    description: "Modern switches with a clean and practical design.",
-    price: "Contact for Price",
-  },
-  {
-    id: 6,
-    name: "Power Socket",
-    category: "Switches & Sockets",
-    description: "Reliable sockets for everyday electrical connections.",
-    price: "Contact for Price",
-  },
-  {
-    id: 7,
-    name: "MCB",
-    category: "Electrical Accessories",
-    description: "Circuit protection solutions for electrical systems.",
-    price: "Contact for Price",
-  },
-  {
-    id: 8,
-    name: "Electrical Accessories",
-    category: "Electrical Accessories",
-    description: "Essential accessories for electrical installations.",
-    price: "Contact for Price",
-  },
-];
-
-function getStoredData(key, fallback) {
+function getStoredCategories() {
   try {
-    const saved = localStorage.getItem(key);
-    return saved !== null ? JSON.parse(saved) : fallback;
+    const saved = localStorage.getItem(CATEGORY_KEY);
+    const parsed = saved ? JSON.parse(saved) : [];
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((category) => {
+        if (typeof category === "string") return true;
+        return category.status !== "Inactive";
+      })
+      .map((category) =>
+        typeof category === "string" ? category : category.name
+      )
+      .filter(Boolean);
   } catch {
-    return fallback;
+    return [];
   }
 }
 
@@ -101,56 +55,93 @@ function getProductIcon(product) {
   return Zap;
 }
 
+function formatPrice(price) {
+  if (price === null || price === undefined || price === "") {
+    return "Contact for Price";
+  }
+
+  const numericPrice = Number(price);
+
+  if (Number.isNaN(numericPrice) || numericPrice === 0) {
+    return "Contact for Price";
+  }
+
+  return `₹${numericPrice.toLocaleString("en-IN")}`;
+}
+
 export default function Products() {
-  const [products, setProducts] = useState(() =>
-    getStoredData(STORAGE_KEY, demoProducts)
-  );
-
-  const [categories, setCategories] = useState(() =>
-    getStoredData(CATEGORY_KEY, [])
-  );
-
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] =
     useState("All Products");
   const [sortOrder, setSortOrder] = useState("default");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Listen for changes made in the Admin Panel.
+  // Fetch products from Supabase
   useEffect(() => {
-    const syncProducts = () => {
-      setProducts(getStoredData(STORAGE_KEY, demoProducts));
-      setCategories(getStoredData(CATEGORY_KEY, []));
+    let mounted = true;
+
+    const loadProducts = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const { data, error: fetchError } = await supabase
+          .from(TABLE_NAME)
+          .select("*")
+          .eq("status", "Active")
+          .order("created_at", { ascending: false });
+
+        if (fetchError) {
+          throw fetchError;
+        }
+
+        if (!mounted) return;
+
+        setProducts(data || []);
+        setCategories(getStoredCategories());
+      } catch (err) {
+        console.error("Public products loading error:", err);
+
+        if (mounted) {
+          setError(err.message || "Unable to load products.");
+          setProducts([]);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
     };
 
-    window.addEventListener("storage", syncProducts);
+    loadProducts();
 
     return () => {
-      window.removeEventListener("storage", syncProducts);
+      mounted = false;
     };
   }, []);
 
-  const activeProducts = products.filter(
-    (product) => product.status !== "Inactive"
-  );
+  // Get available categories
+  const availableCategories = useMemo(() => {
+    return [
+      ...new Set([
+        ...categories,
+        ...products.map((product) => product.category),
+      ]),
+    ].filter(Boolean);
+  }, [categories, products]);
 
-  const availableCategories = [
-    ...new Set([
-      ...categories
-        .filter((category) => category.status !== "Inactive")
-        .map((category) => category.name),
-      ...activeProducts.map((product) => product.category),
-    ]),
-  ].filter(Boolean);
-
+  // Search, filter and sort
   const filteredProducts = useMemo(() => {
-    let result = activeProducts.filter((product) => {
+    let result = products.filter((product) => {
+      const searchText = search.toLowerCase();
+
       const matchesSearch =
-        (product.name || "")
-          .toLowerCase()
-          .includes(search.toLowerCase()) ||
-        (product.description || "")
-          .toLowerCase()
-          .includes(search.toLowerCase());
+        (product.name || "").toLowerCase().includes(searchText) ||
+        (product.description || "").toLowerCase().includes(searchText) ||
+        (product.category || "").toLowerCase().includes(searchText);
 
       const matchesCategory =
         selectedCategory === "All Products" ||
@@ -161,21 +152,22 @@ export default function Products() {
 
     if (sortOrder === "name-asc") {
       result.sort((a, b) =>
-        a.name.localeCompare(b.name)
+        (a.name || "").localeCompare(b.name || "")
       );
     }
 
     if (sortOrder === "name-desc") {
       result.sort((a, b) =>
-        b.name.localeCompare(a.name)
+        (b.name || "").localeCompare(a.name || "")
       );
     }
 
     return result;
-  }, [activeProducts, search, selectedCategory, sortOrder]);
+  }, [products, search, selectedCategory, sortOrder]);
 
   const whatsappNumber = siteConfig.contact.whatsapp;
 
+  // WhatsApp enquiry
   const handleEnquiry = (productName) => {
     const message =
       `Hello VOLTEX ELECTRICALS, I am interested in ${productName}. Please share more details.`;
@@ -278,17 +270,35 @@ export default function Products() {
                 </h2>
 
                 <span className="text-sm text-gray-500">
-                  {filteredProducts.length} Products Found
+                  {loading ? "Loading..." : `${filteredProducts.length} Products Found`}
                 </span>
               </div>
 
-              {filteredProducts.length > 0 ? (
+              {/* Loading */}
+              {loading ? (
+                <div className="rounded-2xl bg-slate-50 px-6 py-20 text-center">
+                  <p className="text-gray-500">
+                    Loading products...
+                  </p>
+                </div>
+              ) : error ? (
+                /* Error */
+                <div className="rounded-2xl bg-red-50 px-6 py-20 text-center">
+                  <h3 className="text-xl font-bold text-red-700">
+                    Unable to Load Products
+                  </h3>
+
+                  <p className="mt-2 text-sm text-red-600">
+                    {error}
+                  </p>
+                </div>
+              ) : filteredProducts.length > 0 ? (
+                /* Products */
                 <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredProducts.map((product) => {
                     const Icon = getProductIcon(product);
 
-                    const productImage =
-                      product.image || product.imageUrl || "";
+                    const productImage = product.image_url || "";
 
                     return (
                       <div
@@ -301,6 +311,9 @@ export default function Products() {
                               src={productImage}
                               alt={product.name}
                               className="h-full w-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
                             />
                           ) : (
                             <Icon
@@ -326,7 +339,7 @@ export default function Products() {
 
                           <div className="mt-5 flex items-center justify-between gap-2">
                             <span className="text-sm font-semibold text-slate-700">
-                              {product.price || "Contact for Price"}
+                              {formatPrice(product.price)}
                             </span>
 
                             <button
@@ -344,6 +357,7 @@ export default function Products() {
                   })}
                 </div>
               ) : (
+                /* Empty State */
                 <div className="rounded-2xl bg-slate-50 px-6 py-20 text-center">
                   <Search
                     size={45}

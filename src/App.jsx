@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
 import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
+BrowserRouter,
+Routes,
+Route,
+Navigate,
 } from "react-router-dom";
+
+import { supabase } from "./lib/supabase";
 
 import PublicLayout from "./layouts/PublicLayout";
 import AdminLayout from "./layouts/AdminLayout";
@@ -27,69 +30,133 @@ import Testimonials from "./pages/admin/Testimonials";
 import Enquiries from "./pages/admin/Enquiries";
 import WebsiteSettings from "./pages/admin/WebsiteSettings";
 
-function ProtectedRoute({ children }) {
-  const isLoggedIn =
-    localStorage.getItem("voltex_admin_logged_in") === "true";
+function LoadingScreen() {
+return (
+<div className="flex min-h-screen items-center justify-center bg-gray-100">
+<div className="text-center">
+<div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
+<p className="mt-4 text-sm text-gray-600">
+Checking authentication...
+</p>
+</div>
+</div>
+);
+}
 
-  return isLoggedIn ? children : <Navigate to="/admin/login" replace />;
+function ProtectedRoute({ children, session, loading }) {
+if (loading) {
+return <LoadingScreen />;
+}
+
+return session ? children : <Navigate to="/admin/login" replace />;
+}
+
+function LoginRoute({ session, loading }) {
+if (loading) {
+return <LoadingScreen />;
+}
+
+return session ? <Navigate to="/admin" replace /> : <Login />;
 }
 
 function NotFound() {
-  return (
-    <h1 className="p-20 text-center text-4xl">
-      404 - Page Not Found
-    </h1>
-  );
+return (
+<h1 className="p-20 text-center text-4xl">
+404 - Page Not Found
+</h1>
+);
 }
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public Website */}
-        <Route element={<PublicLayout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/brands" element={<Brands />} />
-          <Route path="/gallery" element={<Gallery />} />
-          <Route path="/contact" element={<Contact />} />
-        </Route>
+const [session, setSession] = useState(null);
+const [loading, setLoading] = useState(true);
 
-        {/* Admin Login */}
-        <Route
-          path="/admin/login"
-          element={
-            localStorage.getItem("voltex_admin_logged_in") === "true"
-              ? <Navigate to="/admin" replace />
-              : <Login />
-          }
+useEffect(() => {
+let mounted = true;
+
+const getInitialSession = async () => {
+  const { data, error } = await supabase.auth.getSession();
+
+  if (!mounted) return;
+
+  if (error) {
+    console.error("Session check failed:", error.message);
+  }
+
+  setSession(data?.session ?? null);
+  setLoading(false);
+};
+
+getInitialSession();
+
+const {
+  data: { subscription },
+} = supabase.auth.onAuthStateChange((_event, newSession) => {
+  if (!mounted) return;
+
+  setSession(newSession);
+  setLoading(false);
+});
+
+return () => {
+  mounted = false;
+  subscription.unsubscribe();
+};
+
+}, []);
+
+return (
+<BrowserRouter>
+<Routes>
+{/* Public Website */}
+<Route element={<PublicLayout />}>
+<Route path="/" element={<Home />} />
+<Route path="/about" element={<About />} />
+<Route path="/products" element={<Products />} />
+<Route path="/services" element={<Services />} />
+<Route path="/brands" element={<Brands />} />
+<Route path="/gallery" element={<Gallery />} />
+<Route path="/contact" element={<Contact />} />
+</Route>
+
+    {/* Admin Login */}
+    <Route
+      path="/admin/login"
+      element={
+        <LoginRoute
+          session={session}
+          loading={loading}
         />
+      }
+    />
 
-        {/* Protected Admin Panel */}
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminLayout />
-            </ProtectedRoute>
-          }
+    {/* Protected Admin Panel */}
+    <Route
+      path="/admin"
+      element={
+        <ProtectedRoute
+          session={session}
+          loading={loading}
         >
-          <Route index element={<Dashboard />} />
-          <Route path="products" element={<AdminProducts />} />
-          <Route path="categories" element={<Categories />} />
-          <Route path="services" element={<AdminServices />} />
-          <Route path="brands" element={<AdminBrands />} />
-          <Route path="gallery" element={<AdminGallery />} />
-          <Route path="testimonials" element={<Testimonials />} />
-          <Route path="enquiries" element={<Enquiries />} />
-          <Route path="settings" element={<WebsiteSettings />} />
-        </Route>
+          <AdminLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<Dashboard />} />
+      <Route path="products" element={<AdminProducts />} />
+      <Route path="categories" element={<Categories />} />
+      <Route path="services" element={<AdminServices />} />
+      <Route path="brands" element={<AdminBrands />} />
+      <Route path="gallery" element={<AdminGallery />} />
+      <Route path="testimonials" element={<Testimonials />} />
+      <Route path="enquiries" element={<Enquiries />} />
+      <Route path="settings" element={<WebsiteSettings />} />
+    </Route>
 
-        {/* 404 */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
-  );
+    {/* 404 */}
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+</BrowserRouter>
+
+);
 }

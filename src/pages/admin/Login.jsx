@@ -1,12 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Zap, LockKeyhole, Mail } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Zap,
+  LockKeyhole,
+  Mail,
+  Loader2,
+} from "lucide-react";
 import toast from "react-hot-toast";
+import { supabase } from "../../lib/supabase";
 
 export default function Login() {
   const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -20,24 +29,31 @@ export default function Login() {
     });
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    // Temporary demo credentials
-    const adminEmail = "admin@voltex.com";
-    const adminPassword = "Voltex@123";
+    if (loading) return;
 
-    if (
-      formData.email === adminEmail &&
-      formData.password === adminPassword
-    ) {
-      localStorage.setItem("voltex_admin_logged_in", "true");
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: formData.email.trim(),
+        password: formData.password,
+      });
+
+      if (error) {
+        toast.error("Invalid email or password.");
+        return;
+      }
 
       toast.success("Login successful!");
-
-      navigate("/admin");
-    } else {
-      toast.error("Invalid email or password!");
+      navigate("/admin", { replace: true });
+    } catch (error) {
+      console.error("Login error:", error);
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -123,6 +139,7 @@ export default function Login() {
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="Enter your email"
+                    autoComplete="username"
                     required
                     className="w-full rounded-lg border border-gray-300 py-3 pl-12 pr-4 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   />
@@ -147,6 +164,7 @@ export default function Login() {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     required
                     className="w-full rounded-lg border border-gray-300 py-3 pl-12 pr-12 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   />
@@ -155,6 +173,7 @@ export default function Login() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? (
                       <EyeOff size={19} />
@@ -168,29 +187,22 @@ export default function Login() {
               {/* Login Button */}
               <button
                 type="submit"
-                className="w-full rounded-lg bg-orange-500 py-3.5 font-bold text-white shadow-lg transition hover:bg-orange-600"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-3.5 font-bold text-white shadow-lg transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Sign In to Dashboard
+                {loading ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    Signing In...
+                  </>
+                ) : (
+                  "Sign In to Dashboard"
+                )}
               </button>
             </form>
 
-            {/* Demo Credentials */}
-            <div className="mt-8 rounded-lg border border-orange-200 bg-orange-50 p-4">
-              <p className="text-sm font-bold text-orange-800">
-                Demo Login Credentials
-              </p>
-
-              <p className="mt-2 text-sm text-gray-700">
-                Email: admin@voltex.com
-              </p>
-
-              <p className="mt-1 text-sm text-gray-700">
-                Password: Voltex@123
-              </p>
-            </div>
-
             <p className="mt-8 text-center text-xs text-gray-400">
-              Authorized administrators only.
+              Secured authentication powered by Supabase.
             </p>
           </div>
         </div>

@@ -15,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import toast from "react-hot-toast";
+import { supabase } from "../lib/supabase";
 
 const menuItems = [
   { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
@@ -30,15 +32,36 @@ const menuItems = [
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("voltex_admin_logged_in");
-    navigate("/admin/login");
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
+    try {
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success("Logged out successfully!");
+
+      navigate("/admin/login", { replace: true });
+    } catch (error) {
+      console.error("Logout error:", error.message);
+      toast.error("Unable to logout. Please try again.");
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
     <div className="flex min-h-screen bg-gray-100">
+
       {/* Mobile Overlay */}
       {sidebarOpen && (
         <div
@@ -53,12 +76,14 @@ export default function AdminLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
+
         {/* Logo */}
         <div className="flex h-20 items-center justify-between border-b border-blue-900 px-6">
           <div>
             <h1 className="text-xl font-bold">
               VOLTEX <span className="text-orange-400">ADMIN</span>
             </h1>
+
             <p className="mt-1 text-xs text-blue-200">
               Business Management Panel
             </p>
@@ -67,6 +92,7 @@ export default function AdminLayout() {
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden"
+            aria-label="Close sidebar"
           >
             <X size={22} />
           </button>
@@ -102,22 +128,27 @@ export default function AdminLayout() {
         <div className="border-t border-blue-900 p-4">
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-red-300 transition hover:bg-red-500/10 hover:text-red-200"
+            disabled={loggingOut}
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-red-300 transition hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <LogOut size={19} />
-            Logout
+
+            {loggingOut ? "Logging out..." : "Logout"}
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
       <div className="min-w-0 flex-1">
+
         {/* Topbar */}
         <header className="flex h-20 items-center justify-between border-b border-gray-200 bg-white px-5 shadow-sm md:px-8">
+
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSidebarOpen(true)}
               className="text-gray-600 lg:hidden"
+              aria-label="Open sidebar"
             >
               <Menu size={25} />
             </button>
@@ -126,6 +157,7 @@ export default function AdminLayout() {
               <h2 className="text-lg font-bold text-blue-950">
                 Admin Panel
               </h2>
+
               <p className="text-xs text-gray-500">
                 Manage your electrical business
               </p>
@@ -137,7 +169,10 @@ export default function AdminLayout() {
               <p className="text-sm font-semibold text-gray-800">
                 Administrator
               </p>
-              <p className="text-xs text-gray-500">VOLTEX ELECTRICALS</p>
+
+              <p className="text-xs text-gray-500">
+                VOLTEX ELECTRICALS
+              </p>
             </div>
 
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
@@ -150,7 +185,7 @@ export default function AdminLayout() {
         <main className="p-5 md:p-8">
           <Outlet />
         </main>
-      </div>
+</div>
     </div>
   );
 }
